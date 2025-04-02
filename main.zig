@@ -6,7 +6,7 @@ const tree = @import("./tree.zig");
 const response = @import("response.zig");
 
 const Random = struct {
-    random: u8,
+    random: u64,
 };
 
 var allocator: std.mem.Allocator = undefined;
@@ -38,5 +38,7 @@ pub fn main() !void {
 }
 
 fn salamHandler(req: *Router.Request) !void {
-    try req.res.json(Random{ .random = 12 });
+    const data = try req.json_data(Random);
+
+    try req.res.json(Random{ .random = data.random });
 }

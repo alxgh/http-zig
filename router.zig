@@ -11,6 +11,7 @@ pub const Request = struct {
     req: std.http.Server.Request,
     conn: std.net.Server.Connection,
     res: response.Response,
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, conn: std.net.Server.Connection) !RequestSelf {
         var buffer: [1024]u8 = undefined;
@@ -21,6 +22,7 @@ pub const Request = struct {
             .conn = conn,
             .req = req,
             .res = response.Response.init(allocator, req),
+            .allocator = allocator,
         };
     }
 
@@ -34,6 +36,15 @@ pub const Request = struct {
 
     pub fn method(self: RequestSelf) std.http.Method {
         return self.req.head.method;
+    }
+
+    pub fn json_data(self: *RequestSelf, T: type) !T {
+        var reader = try self.req.reader();
+        const data = try reader.readAllAlloc(self.allocator, 2046);
+        const parsed = try std.json.parseFromSlice(T, self.allocator, data, .{});
+        defer parsed.deinit();
+
+        return parsed.value;
     }
 };
 
