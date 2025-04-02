@@ -36,8 +36,8 @@ pub fn Radix(comptime T: type) type {
                 self.allocator.destroy(child);
             }
 
-            self.allocator.destroy(self.children);
             self.children.deinit();
+            self.allocator.destroy(self.children);
         }
     };
 
