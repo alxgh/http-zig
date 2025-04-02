@@ -28,6 +28,7 @@ pub const Request = struct {
 
     pub fn deinit(self: *RequestSelf) void {
         self.conn.stream.close();
+        self.res.deinit();
     }
 
     pub fn target(self: RequestSelf) []const u8 {
@@ -41,7 +42,8 @@ pub const Request = struct {
     pub fn json_data(self: *RequestSelf, T: type) !T {
         var reader = try self.req.reader();
         const data = try reader.readAllAlloc(self.allocator, 2046);
-        const parsed = try std.json.parseFromSlice(T, self.allocator, data, .{});
+        defer self.allocator.free(data);
+        var parsed = try std.json.parseFromSlice(T, self.allocator, data, .{});
         defer parsed.deinit();
 
         return parsed.value;
