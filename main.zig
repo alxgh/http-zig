@@ -33,6 +33,7 @@ pub fn main() !void {
     var router = try Router.init(allocator, server);
     defer router.deinit();
     try router.get("/salam", salamHandler);
+    try router.get("/salam/:text", salamHandler);
 
     try router.run();
 }

@@ -65,24 +65,68 @@ pub fn Radix(comptime T: type) type {
 
             while (true) {
                 var selected_child: ?*Node = null;
-                var m: u64 = 0;
+                var total_len: usize = 0;
                 for (current.children.items) |child| {
-                    if (remaining_needle.len < child.str.len) {
-                        continue;
+                    var found = true;
+
+                    var temp_total_len: usize = 0;
+                    if (child.str.len == 1 and child.str[0] == '/') {
+                        if (remaining_needle[0] != '/') {
+                            found = false;
+                        }
+                    } else {
+                        var it = std.mem.splitScalar(u8, child.str, '/');
+                        var needle_it = std.mem.splitScalar(u8, remaining_needle, '/');
+                        while (true) {
+                            const part = it.next();
+                            const needle_part = needle_it.next();
+                            if (part == null) {
+                                break;
+                            }
+
+                            if (needle_part == null) {
+                                found = false;
+                                break;
+                            }
+
+                            if (part.?.len == 0) {
+                                if (needle_part.?.len != 0) {
+                                    found = false;
+                                    break;
+                                }
+                                continue;
+                            }
+
+                            if (part.?[0] == ':') {
+                                temp_total_len += needle_part.?.len;
+                                continue;
+                            }
+
+                            temp_total_len += part.?.len;
+
+                            if (part.?.len > needle_part.?.len) {
+                                found = false;
+                                break;
+                            }
+
+                            const m = part.?.len;
+
+                            found = std.mem.eql(u8, part.?, needle_part.?[0..m]);
+                        }
                     }
-                    m = child.str.len;
-                    if (std.mem.eql(u8, child.str[0..m], remaining_needle[0..m])) {
+
+                    if (found) {
+                        total_len += temp_total_len + std.mem.count(u8, child.str, "/");
                         selected_child = child;
                         break;
                     }
                 }
-
                 if (selected_child == null) return null;
                 current = selected_child.?;
-                if (m == remaining_needle.len) {
+                if (total_len == remaining_needle.len) {
                     return current.val;
                 }
-                remaining_needle = remaining_needle[m..];
+                remaining_needle = remaining_needle[total_len..];
             }
         }
 
@@ -196,4 +240,21 @@ test "Lookup" {
     assert(radix.lookup("/sadam") == 3);
     assert(radix.lookup("/slax") == 4);
     assert(radix.lookup("/sla") == 5);
+}
+
+test "Wildcard" {
+    var radix = try Radix(u8).init(std.testing.allocator);
+    defer radix.deinit();
+
+    try radix.insert("/user/:id", 1);
+    try radix.insert("/user/:id/e", 2);
+    try radix.insert("/user/:id/e/:name", 3);
+
+    const assert = std.debug.assert;
+
+    // assert(radix.lookup("/user/12") == 1);
+    // assert(radix.lookup("/user/32") == 1);
+    // assert(radix.lookup("/user/32/e") == 2);
+    assert(radix.lookup("/user/32/e/salam") == 3);
+    assert(radix.lookup("/user/32/x") == null);
 }
