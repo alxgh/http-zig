@@ -87,11 +87,56 @@ pub fn deinit(self: *Self) void {
 
 // Get route
 pub fn get(self: *Self, path: []const u8, handler: *const Handler) !void {
-    try self.get_routes.insert(path, .{
+    try self.add_route(.{
         .path = path,
         .handler = handler,
         .method = .GET,
     });
+}
+
+pub fn post(self: *Self, path: []const u8, handler: *const Handler) !void {
+    try self.add_route(.{
+        .path = path,
+        .handler = handler,
+        .method = .POST,
+    });
+}
+
+pub fn put(self: *Self, path: []const u8, handler: *const Handler) !void {
+    try self.add_route(.{
+        .path = path,
+        .handler = handler,
+        .method = .PUT,
+    });
+}
+
+pub fn patch(self: *Self, path: []const u8, handler: *const Handler) !void {
+    try self.add_route(.{
+        .path = path,
+        .handler = handler,
+        .method = .PATCH,
+    });
+}
+
+pub fn delete(self: *Self, path: []const u8, handler: *const Handler) !void {
+    try self.add_route(.{
+        .path = path,
+        .handler = handler,
+        .method = .DELETE,
+    });
+}
+
+fn add_route(self: *Self, route: Route) !void {
+    var route_tree = switch (route.method) {
+        .GET => self.get_routes,
+        .POST => self.post_routes,
+        .PATCH => self.patch_routes,
+        .PUT => self.put_routes,
+        .DELETE => self.delete_routes,
+        else => unreachable,
+    };
+
+    try route_tree.insert(route.path, route);
 }
 
 pub fn run(self: *Self) !void {
