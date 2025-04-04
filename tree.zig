@@ -68,6 +68,7 @@ pub fn Radix(comptime T: type) type {
                 var total_len: usize = 0;
                 for (current.children.items) |child| {
                     var found = true;
+                    var exact_match = true;
 
                     var temp_total_len: usize = 0;
                     if (child.str.len == 1 and child.str[0] == '/') {
@@ -90,7 +91,7 @@ pub fn Radix(comptime T: type) type {
                             }
 
                             if (part.?.len == 0) {
-                                if (needle_part.?.len != 0) {
+                                if (needle_part.?.len != 0 and it.peek() != null) {
                                     found = false;
                                     break;
                                 }
@@ -99,6 +100,7 @@ pub fn Radix(comptime T: type) type {
 
                             if (part.?[0] == ':') {
                                 temp_total_len += needle_part.?.len;
+                                exact_match = false;
                                 continue;
                             }
 
@@ -116,9 +118,13 @@ pub fn Radix(comptime T: type) type {
                     }
 
                     if (found) {
-                        total_len += temp_total_len + std.mem.count(u8, child.str, "/");
-                        selected_child = child;
-                        break;
+                        if (exact_match or (!exact_match and selected_child == null)) {
+                            total_len = temp_total_len + std.mem.count(u8, child.str, "/");
+                            selected_child = child;
+                        }
+                        if (exact_match) {
+                            break;
+                        }
                     }
                 }
                 if (selected_child == null) return null;
@@ -252,9 +258,23 @@ test "Wildcard" {
 
     const assert = std.debug.assert;
 
-    // assert(radix.lookup("/user/12") == 1);
-    // assert(radix.lookup("/user/32") == 1);
-    // assert(radix.lookup("/user/32/e") == 2);
+    assert(radix.lookup("/user/12") == 1);
+    assert(radix.lookup("/user/32") == 1);
+    assert(radix.lookup("/user/32/e") == 2);
     assert(radix.lookup("/user/32/e/salam") == 3);
     assert(radix.lookup("/user/32/x") == null);
+}
+
+test "Exact Overlap" {
+    var radix = try Radix(u8).init(std.testing.allocator);
+    defer radix.deinit();
+
+    try radix.insert("/user/:id", 1);
+    try radix.insert("/user/444", 2);
+
+    const assert = std.debug.assert;
+
+    assert(radix.lookup("/user/12") == 1);
+    assert(radix.lookup("/user/32") == 1);
+    assert(radix.lookup("/user/444") == 2);
 }
