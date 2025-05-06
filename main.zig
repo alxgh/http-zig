@@ -39,6 +39,7 @@ pub fn main() !void {
 }
 
 fn salamHandler(req: *Router.Request) !void {
+    std.Thread.sleep(2_000_000_000);
     const data = try req.json_data(Random);
 
     try req.res.json(Random{ .random = data.random });

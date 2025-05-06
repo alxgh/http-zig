@@ -34,10 +34,14 @@ pub const Request = struct {
     res: response.Response,
     allocator: std.mem.Allocator,
     context: *Context,
+    n: i64,
+    http_server: *http.Server,
+    buffer: []u8,
 
-    pub fn init(allocator: std.mem.Allocator, conn: std.net.Server.Connection, context: *Context) !RequestSelf {
-        var buffer: [1024]u8 = undefined;
-        var http_server = http.Server.init(conn, &buffer);
+    pub fn init(allocator: std.mem.Allocator, conn: std.net.Server.Connection, context: *Context, n: i64) !RequestSelf {
+        const buffer = try allocator.alloc(u8, 1028);
+        var http_server = try allocator.create(http.Server);
+        http_server.* = http.Server.init(conn, buffer);
         const req = try http_server.receiveHead();
 
         return .{
@@ -46,6 +50,9 @@ pub const Request = struct {
             .res = response.Response.init(allocator, req),
             .allocator = allocator,
             .context = context,
+            .n = n,
+            .http_server = http_server,
+            .buffer = buffer,
         };
     }
 
@@ -53,6 +60,9 @@ pub const Request = struct {
         self.conn.stream.close();
         self.res.deinit();
         self.context.deinit();
+        self.allocator.destroy(self.req);
+        self.allocator.destroy(self.http_server);
+        self.allocator.free(self.buffer);
     }
 
     pub fn target(self: RequestSelf) []const u8 {
@@ -79,7 +89,17 @@ const Route = struct {
     handler: *const Handler,
     method: http.Method,
 };
+
 const Self = @This();
+const RequestTuple = std.meta.Tuple(&.{ *Request, Route });
+
+const ThreadArgs = struct {
+    cond: *std.Thread.Condition,
+    mu: *std.Thread.Mutex,
+    queue: *std.ArrayList(RequestTuple),
+    running: *bool,
+    n: usize,
+};
 
 get_routes: RoutesTree,
 post_routes: RoutesTree,
@@ -88,8 +108,51 @@ patch_routes: RoutesTree,
 delete_routes: RoutesTree,
 server: std.net.Server,
 allocator: std.mem.Allocator,
+running: bool,
+n: i64,
+
+queue: *std.ArrayList(RequestTuple),
+mu: *std.Thread.Mutex,
+cond: *std.Thread.Condition,
+
+fn enqueue(self: *Self, tuple: RequestTuple) !void {
+    self.mu.lock();
+    defer self.mu.unlock();
+    try self.queue.append(tuple);
+    self.cond.signal();
+}
+
+fn exec_thread(args: ThreadArgs) void {
+    while (true) {
+        args.mu.lock();
+
+        if (args.queue.items.len < 1) {
+            args.cond.wait(args.mu);
+        }
+
+        const r = args.queue.pop().?;
+
+        const req = r[0];
+        const route = r[1];
+
+        args.mu.unlock();
+
+        std.debug.print("{} Handled by {}\n", .{ req.n, args.n });
+
+        route.handler(req) catch |e| std.debug.print("{any}", .{e});
+    }
+}
 
 pub fn init(allocator: std.mem.Allocator, server: std.net.Server) !Self {
+    const mu = try allocator.create(std.Thread.Mutex);
+    mu.* = std.Thread.Mutex{};
+
+    const queue = try allocator.create(std.ArrayList(RequestTuple));
+    queue.* = std.ArrayList(RequestTuple).init(allocator);
+
+    const cond = try allocator.create(std.Thread.Condition);
+    cond.* = std.Thread.Condition{};
+
     return .{
         .get_routes = try RoutesTree.init(allocator),
         .post_routes = try RoutesTree.init(allocator),
@@ -98,6 +161,11 @@ pub fn init(allocator: std.mem.Allocator, server: std.net.Server) !Self {
         .delete_routes = try RoutesTree.init(allocator),
         .server = server,
         .allocator = allocator,
+        .running = true,
+        .queue = queue,
+        .mu = mu,
+        .cond = cond,
+        .n = 0,
     };
 }
 
@@ -107,6 +175,9 @@ pub fn deinit(self: *Self) void {
     self.patch_routes.deinit();
     self.put_routes.deinit();
     self.delete_routes.deinit();
+    self.queue.deinit();
+    self.allocator.destroy(self.queue);
+    self.allocator.destroy(self.mu);
 }
 
 // Get route
@@ -168,29 +239,54 @@ fn add_route(self: *Self, route: Route) !void {
 }
 
 pub fn run(self: *Self) !void {
-    while (true) {
-        try self.handleConnection(try self.server.accept());
+    // run workers
+    const t_cnt = 4;
+    var threads: [t_cnt]std.Thread = undefined;
+
+    for (0..t_cnt) |i| {
+        threads[i] = try std.Thread.spawn(.{}, exec_thread, .{ThreadArgs{
+            .cond = self.cond,
+            .mu = self.mu,
+            .queue = self.queue,
+            .running = &self.running,
+            .n = i,
+        }});
+    }
+    while (self.running) {
+        // if server accpet fails everything fails else we are fine!
+        // How to stop the server?
+        self.handleConnection(try self.server.accept()) catch |e| {
+            // TODO: ???
+            std.debug.print("{any}", .{e});
+        };
+    }
+
+    for (0..t_cnt) |i| {
+        threads[i].join();
     }
 }
 
 fn handleConnection(self: *Self, conn: std.net.Server.Connection) !void {
     const context = try self.allocator.create(Context);
     context.* = Context.init(self.allocator);
-    var request = try Request.init(self.allocator, conn, context);
-    defer request.deinit();
+    const request = try self.allocator.create(Request);
+    self.n += 1;
+    request.* = try Request.init(self.allocator, conn, context, self.n);
 
     std.debug.print("{s}|||{}\n", .{ request.target(), request.method() });
 
-    try self.exec(&request);
+    const route = self.resolve(request);
 
-    try request.req.respond("Not found", http.Server.Request.RespondOptions{ .status = .not_found });
+    if (route) |r| {
+        try self.enqueue(.{ request, r });
+        // try r.handler(request);
+    } else {
+        try request.req.respond("Not found", http.Server.Request.RespondOptions{ .status = .not_found });
+    }
 }
 
-fn exec(self: *Self, request: *Request) !void {
+fn resolve(self: *Self, request: *Request) ?Route {
     var rt = self.routes_tree(request.method());
     const route = rt.lookup(request.target());
-    if (route) |r| {
-        try r.handler(request);
-        return;
-    }
+    return route;
 }
