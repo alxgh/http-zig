@@ -60,7 +60,7 @@ pub const Request = struct {
         self.conn.stream.close();
         self.res.deinit();
         self.context.deinit();
-        self.allocator.destroy(self.req);
+        self.allocator.destroy(self.context);
         self.allocator.destroy(self.http_server);
         self.allocator.free(self.buffer);
     }
@@ -99,6 +99,7 @@ const ThreadArgs = struct {
     queue: *std.ArrayList(RequestTuple),
     running: *bool,
     n: usize,
+    allocator: std.mem.Allocator,
 };
 
 get_routes: RoutesTree,
@@ -123,21 +124,29 @@ fn enqueue(self: *Self, tuple: RequestTuple) !void {
 }
 
 fn exec_thread(args: ThreadArgs) void {
-    while (true) {
+    while (args.running.*) {
         args.mu.lock();
 
         if (args.queue.items.len < 1) {
             args.cond.wait(args.mu);
         }
 
+        if (!args.running.*) {
+            args.mu.unlock();
+            break;
+        }
+
         const r = args.queue.pop().?;
 
-        const req = r[0];
+        var req: *Request = r[0];
         const route = r[1];
 
         args.mu.unlock();
 
         std.debug.print("{} Handled by {}\n", .{ req.n, args.n });
+
+        defer args.allocator.destroy(req);
+        defer req.deinit();
 
         route.handler(req) catch |e| std.debug.print("{any}", .{e});
     }
@@ -178,6 +187,7 @@ pub fn deinit(self: *Self) void {
     self.queue.deinit();
     self.allocator.destroy(self.queue);
     self.allocator.destroy(self.mu);
+    self.allocator.destroy(self.cond);
 }
 
 // Get route
@@ -250,6 +260,7 @@ pub fn run(self: *Self) !void {
             .queue = self.queue,
             .running = &self.running,
             .n = i,
+            .allocator = self.allocator,
         }});
     }
     while (self.running) {
