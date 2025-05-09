@@ -1,9 +1,9 @@
 const print = @import("std").debug.print;
 const std = @import("std");
 const http = std.http;
-const Router = @import("./router.zig");
+const Router = @import("./Router.zig");
 const tree = @import("./tree.zig");
-const response = @import("response.zig");
+const Request = @import("./Request.zig");
 
 const Random = struct {
     random: u64,
@@ -38,7 +38,7 @@ pub fn main() !void {
     try router.run();
 }
 
-fn salamHandler(req: *Router.Request) !void {
+fn salamHandler(req: *Request) !void {
     std.Thread.sleep(2_000_000_000);
     const data = try req.json_data(Random);
 
