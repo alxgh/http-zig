@@ -4,6 +4,7 @@ const http = std.http;
 const Router = @import("./Router.zig");
 const tree = @import("./tree.zig");
 const Request = @import("./Request.zig");
+const util = @import("util.zig");
 
 const Random = struct {
     random: u64,
@@ -34,6 +35,8 @@ pub fn main() !void {
     defer router.deinit();
     try router.get("/salam", salamHandler);
     try router.get("/salam/:text", salamHandler);
+
+    try util.graceful_shutdown(&router);
 
     try router.run();
 }

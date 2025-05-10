@@ -187,18 +187,26 @@ pub fn run(self: *Self) !void {
             .allocator = self.allocator,
         }});
     }
+
+    _ = try std.Thread.spawn(.{}, accept, .{self});
+
+    for (0..t_cnt) |i| {
+        threads[i].join();
+    }
+}
+
+fn accept(self: *Self) !void {
     while (self.running) {
-        // if server accpet fails everything fails else we are fine!
-        // How to stop the server?
         self.handleConnection(try self.server.accept()) catch |e| {
             // TODO: ???
             std.debug.print("{any}", .{e});
         };
     }
+}
 
-    for (0..t_cnt) |i| {
-        threads[i].join();
-    }
+pub fn stop(self: *Self) void {
+    self.running = false;
+    self.cond.broadcast();
 }
 
 fn handleConnection(self: *Self, conn: std.net.Server.Connection) !void {
