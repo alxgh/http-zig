@@ -201,30 +201,27 @@ test "Insert test" {
     try radix.insert("/slax", 4);
     try radix.insert("/sla", 5);
 
-    const assert = std.debug.assert;
+    const expectEqual = std.testing.expectEqual;
+    const expectEqualStrings = std.testing.expectEqualStrings;
 
-    assert(radix.head.children.items.len == 1);
-    assert(radix.head.children.items[0].val == 1);
-    assert(std.mem.eql(u8, radix.head.children.items[0].str, "/"));
-    assert(radix.head.children.items[0].children.items.len == 1);
-    assert(std.mem.eql(u8, radix.head.children.items[0].children.items[0].str, "s"));
-    assert(radix.head.children.items[0].children.items[0].val == null);
-    assert(radix.head.children.items[0].children.items[0].children.items.len == 2);
+    try expectEqual(radix.head.children.items.len, 1);
+    try expectEqual(radix.head.children.items[0].val, 1);
+    try expectEqualStrings(radix.head.children.items[0].str, "/");
+    try expectEqual(radix.head.children.items[0].children.items.len, 1);
+    try expectEqualStrings(radix.head.children.items[0].children.items[0].str, "s");
+    try expectEqual(radix.head.children.items[0].children.items[0].val, null);
+    try expectEqual(radix.head.children.items[0].children.items[0].children.items.len, 2);
 
-    assert(std.mem.eql(u8, radix.head.children.items[0].children.items[0].children.items[0].str, "a"));
-    assert(std.mem.eql(u8, radix.head.children.items[0].children.items[0].children.items[1].str, "la"));
+    try expectEqualStrings(radix.head.children.items[0].children.items[0].children.items[0].str, "a");
+    try expectEqualStrings(radix.head.children.items[0].children.items[0].children.items[1].str, "la");
 
-    assert(radix.head.children.items[0].children.items[0].children.items[0].children.items.len == 2);
-    assert(radix.head.children.items[0].children.items[0].children.items[1].children.items.len == 1);
+    try expectEqual(radix.head.children.items[0].children.items[0].children.items[0].children.items.len, 2);
+    try expectEqual(radix.head.children.items[0].children.items[0].children.items[1].children.items.len, 1);
 
-    assert(std.mem.eql(u8, radix.head.children.items[0].children.items[0].children.items[0].children.items[0].str, "lam"));
-    assert(std.mem.eql(u8, radix.head.children.items[0].children.items[0].children.items[0].children.items[1].str, "dam"));
+    try expectEqualStrings(radix.head.children.items[0].children.items[0].children.items[0].children.items[0].str, "lam");
+    try expectEqualStrings(radix.head.children.items[0].children.items[0].children.items[0].children.items[1].str, "dam");
 
-    assert(std.mem.eql(u8, radix.head.children.items[0].children.items[0].children.items[1].children.items[0].str, "x"));
-
-    for (radix.head.children.items) |child| {
-        std.log.debug("{s}\n", .{child.str});
-    }
+    try expectEqualStrings(radix.head.children.items[0].children.items[0].children.items[1].children.items[0].str, "x");
 }
 
 test "Lookup" {
@@ -237,15 +234,15 @@ test "Lookup" {
     try radix.insert("/slax", 4);
     try radix.insert("/sla", 5);
 
-    const assert = std.debug.assert;
+    const expectEqual = std.testing.expectEqual;
 
-    assert(radix.lookup("/") == 1);
-    assert(radix.lookup("/s") == null);
-    assert(radix.lookup("/sl") == null);
-    assert(radix.lookup("/salam") == 2);
-    assert(radix.lookup("/sadam") == 3);
-    assert(radix.lookup("/slax") == 4);
-    assert(radix.lookup("/sla") == 5);
+    try expectEqual(radix.lookup("/"), 1);
+    try expectEqual(radix.lookup("/s"), null);
+    try expectEqual(radix.lookup("/sl"), null);
+    try expectEqual(radix.lookup("/salam"), 2);
+    try expectEqual(radix.lookup("/sadam"), 3);
+    try expectEqual(radix.lookup("/slax"), 4);
+    try expectEqual(radix.lookup("/sla"), 5);
 }
 
 test "Wildcard" {
@@ -256,13 +253,13 @@ test "Wildcard" {
     try radix.insert("/user/:id/e", 2);
     try radix.insert("/user/:id/e/:name", 3);
 
-    const assert = std.debug.assert;
+    const expectEqual = std.testing.expectEqual;
 
-    assert(radix.lookup("/user/12") == 1);
-    assert(radix.lookup("/user/32") == 1);
-    assert(radix.lookup("/user/32/e") == 2);
-    assert(radix.lookup("/user/32/e/salam") == 3);
-    assert(radix.lookup("/user/32/x") == null);
+    try expectEqual(radix.lookup("/user/12"), 1);
+    try expectEqual(radix.lookup("/user/32"), 1);
+    try expectEqual(radix.lookup("/user/32/e"), 2);
+    try expectEqual(radix.lookup("/user/32/e/salam"), 3);
+    try expectEqual(radix.lookup("/user/32/x"), null);
 }
 
 test "Exact Overlap" {
@@ -272,9 +269,9 @@ test "Exact Overlap" {
     try radix.insert("/user/:id", 1);
     try radix.insert("/user/444", 2);
 
-    const assert = std.debug.assert;
+    const expectEqual = std.testing.expectEqual;
 
-    assert(radix.lookup("/user/12") == 1);
-    assert(radix.lookup("/user/32") == 1);
-    assert(radix.lookup("/user/444") == 2);
+    try expectEqual(radix.lookup("/user/12"), 1);
+    try expectEqual(radix.lookup("/user/32"), 1);
+    try expectEqual(radix.lookup("/user/444"), 2);
 }
